@@ -1,0 +1,2 @@
+twitchio>=2.0.0  # Add the version you need
+keyboard>=0.13.5

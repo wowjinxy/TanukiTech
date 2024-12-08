@@ -1,0 +1,6 @@
+{
+    "oauth_token": "your_oauth_token_here",
+    "channels": [
+        "your_channel_name"
+    ]
+}
