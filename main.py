@@ -73,38 +73,56 @@ class TanukiTechBot(commands.Bot):
     def load_plugins(self):
         """
         Load or reload plugins from the plugins folder.
+        Each plugin should reside in its own directory inside 'plugins/'.
+        We will only search the first level directories for a main plugin file.
         """
         plugins = []
         PLUGINS_FOLDER = "plugins"
-
+        VALID_PLUGIN_ENTRY_FILES = ["__init__.py", "plugin.py", "main.py"]  # Define acceptable entry filenames
+    
         if not os.path.exists(PLUGINS_FOLDER):
             os.makedirs(PLUGINS_FOLDER)
-
-        for root, _, files in os.walk(PLUGINS_FOLDER):
-            for filename in files:
-                if filename.endswith(".py"):
-                    plugin_path = os.path.join(root, filename)
-                    spec = importlib.util.spec_from_file_location(filename[:-3], plugin_path)
-                    module = importlib.util.module_from_spec(spec)
-
-                    try:
-                        spec.loader.exec_module(module)
-
-                        if hasattr(module, "setup"):
-                            # If plugin is already loaded as a Cog, remove it before reloading
-                            cog_name = getattr(module, 'metadata', {}).get('name', filename)
-                            if cog_name in self.cogs:
-                                self.remove_cog(cog_name)
-
-                            module.setup(self)
-                            plugins.append(module)
-                            print(f"Loaded plugin: {getattr(module, 'metadata', {}).get('name', filename)}")
-                        else:
-                            print(f"Plugin '{filename}' does not have a setup function.")
-                    except Exception as e:
-                        print(f"Failed to load plugin '{filename}': {e}")
-                        traceback.print_exc()
-
+    
+        # Iterate only through directories within the plugins folder
+        for item in os.listdir(PLUGINS_FOLDER):
+            plugin_dir = os.path.join(PLUGINS_FOLDER, item)
+            if os.path.isdir(plugin_dir):
+                # Try to find a main plugin file in the directory
+                plugin_file = None
+                for filename in VALID_PLUGIN_ENTRY_FILES:
+                    potential_path = os.path.join(plugin_dir, filename)
+                    if os.path.isfile(potential_path):
+                        plugin_file = potential_path
+                        break
+    
+                if not plugin_file:
+                    # No valid entry file found, skip this directory
+                    print(f"Skipping '{item}' as it doesn't contain a recognized plugin entry file.")
+                    continue
+    
+                # Load the plugin from the identified entry file
+                plugin_name = os.path.splitext(os.path.basename(plugin_file))[0]
+                spec = importlib.util.spec_from_file_location(plugin_name, plugin_file)
+                module = importlib.util.module_from_spec(spec)
+    
+                try:
+                    spec.loader.exec_module(module)
+    
+                    if hasattr(module, "setup"):
+                        # If plugin is already loaded as a Cog, remove it before reloading
+                        cog_name = getattr(module, 'metadata', {}).get('name', item)
+                        if cog_name in self.cogs:
+                            self.remove_cog(cog_name)
+    
+                        module.setup(self)
+                        plugins.append(module)
+                        print(f"Loaded plugin: {getattr(module, 'metadata', {}).get('name', item)}")
+                    else:
+                        print(f"Plugin '{item}' does not have a setup function.")
+                except Exception as e:
+                    print(f"Failed to load plugin '{item}': {e}")
+                    traceback.print_exc()
+    
         return plugins
 
     async def event_ready(self):
