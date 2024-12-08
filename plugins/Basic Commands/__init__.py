@@ -1,23 +1,14 @@
-import aiohttp
-import json
 import os
+import importlib.util
 from twitchio.ext import commands
 
 metadata = {
     "name": "Commands Plugin",
-    "version": "2.2",
+    "version": "2.4",
     "author": "Jinxy",
-    "description": "A plugin to handle custom chat commands with user-level filtering and aliases."
+    "description": "A plugin to handle custom chat commands dynamically."
 }
 
-# Define your custom commands, their aliases, and required user levels here
-CUSTOM_COMMANDS = {
-    "!greet": {"response": "Hello there! How can I assist you today?", "level": 0, "aliases": ["!hello", "!hi"]},
-    "!info": {"response": "I am TanukiTechBot, here to help manage your chat and entertain your audience!", "level": 0, "aliases": []},
-    "!help": {"response": "Available commands: !greet, !info, !help", "level": 0, "aliases": []},
-}
-
-# User levels
 USER_LEVELS = {
     "viewer": 0,
     "moderator": 1,
@@ -27,138 +18,116 @@ USER_LEVELS = {
 class CommandsPlugin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.CUSTOM_COMMANDS = self.load_commands()
 
-    @commands.command(name="commands")
-    async def list_commands(self, ctx):
-        """List available commands for the user."""
-        user_level = get_user_level(ctx.author)
-        available_commands = []
-    
-        # Include only the commands that the user level allows
-        for command, details in CUSTOM_COMMANDS.items():
-            if details["level"] <= user_level:
-                available_commands.append(command)
-                available_commands.extend(details.get("aliases", []))
-    
-        # Dynamically add !game if user is a moderator or broadcaster
-        if user_level >= USER_LEVELS["moderator"]:
-            available_commands.append("!game")
-    
-        # Add "!commands" explicitly
-        available_commands.append("!commands")
-        await ctx.send(", ".join(available_commands))
+    def load_commands(self):
+        """
+        Dynamically load commands from the 'commands' subdirectory.
+        Each command file defines COMMAND_DEFINITION, e.g.:
 
-    @commands.command(name="addcommand")
-    async def add_command(self, ctx, command: str, response: str, *aliases):
-        """Add a new custom command dynamically with optional aliases."""
-        if get_user_level(ctx.author) < USER_LEVELS["moderator"]:
-            await ctx.send("You do not have permission to add commands.")
-            return
+        COMMAND_DEFINITION = {
+            "!command": {
+                "response": "Some response text or None",
+                "level": 0,
+                "aliases": ["!alias1", "!alias2"],
+                "callback": async function or None
+            }
+        }
+        """
+        commands_dir = os.path.join(os.path.dirname(__file__), "commands")
+        custom_commands = {}
 
-        if command in CUSTOM_COMMANDS:
-            await ctx.send(f"The command '{command}' already exists.")
-            return
+        if not os.path.isdir(commands_dir):
+            os.makedirs(commands_dir)
 
-        CUSTOM_COMMANDS[command] = {"response": response, "level": 0, "aliases": list(aliases)}
-        await ctx.send(f"Command '{command}' has been added successfully with aliases: {', '.join(aliases) if aliases else 'none'}.")
+        for filename in os.listdir(commands_dir):
+            if filename.endswith(".py"):
+                file_path = os.path.join(commands_dir, filename)
+                command_name = filename[:-3]
 
-    @commands.command(name="game")
-    async def change_game(self, ctx, *, game_name: str):
-        """Change the stream's category (game) if the user is a mod or the broadcaster."""
-        if get_user_level(ctx.author) < USER_LEVELS["moderator"]:
-            await ctx.send("You do not have permission to change the category.")
-            return
+                spec = importlib.util.spec_from_file_location(command_name, file_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
 
-        oauth_data = self.bot.oauth_data
-        oauth_token = oauth_data.get("oauth_token")
-        broadcaster_id = oauth_data.get("broadcaster_id")
-        client_id = oauth_data.get("client_id")
+                if hasattr(module, "COMMAND_DEFINITION"):
+                    for cmd, details in module.COMMAND_DEFINITION.items():
+                        custom_commands[cmd] = details
+                else:
+                    print(f"WARNING: {filename} does not define COMMAND_DEFINITION. Skipping...")
 
-        if not all([oauth_token, broadcaster_id, client_id]):
-            await ctx.send("Missing OAuth configuration. Cannot change category.")
-            return
+        return custom_commands
 
-        game_id = await self.fetch_game_id(game_name, oauth_token, client_id)
-        if not game_id:
-            await ctx.send(f"Could not find a category for '{game_name}'. Check spelling and try again.")
-            return
-
-        success = await self.update_category(broadcaster_id, game_id, oauth_token, client_id)
-        if success:
-            await ctx.send(f"Successfully changed the category to '{game_name}'.")
+    def get_user_level(self, user):
+        if user.is_broadcaster:
+            return USER_LEVELS["broadcaster"]
+        elif user.is_mod:
+            return USER_LEVELS["moderator"]
         else:
-            await ctx.send("Failed to update the category. Check logs and token scopes.")
+            return USER_LEVELS["viewer"]
 
     @commands.Cog.event()
     async def event_message(self, message):
-        """Listen for custom commands and their aliases."""
         if message.echo:
             return
 
-        # Prevent duplicate responses for !commands
-        if message.content == "!commands":
-            return
+        # Convert message to lowercase for matching commands
+        content_lower = message.content.strip().lower()
 
-        for command, details in CUSTOM_COMMANDS.items():
-            if message.content == command or message.content in details.get("aliases", []):
-                user_level = get_user_level(message.author)
+        for command, details in self.CUSTOM_COMMANDS.items():
+            # Check if the message matches the command or one of its aliases
+            all_triggers = [command] + details.get("aliases", [])
+            if content_lower.split(" ")[0] in all_triggers:
+                user_level = self.get_user_level(message.author)
                 if user_level >= details["level"]:
-                    await message.channel.send(details["response"])
+                    callback = details.get("callback")
+
+                    # A minimal ctx-like object for callback convenience
+                    class Ctx:
+                        def __init__(self, message, bot):
+                            self.message = message
+                            self.channel = message.channel
+                            self.author = message.author
+                            self.bot = bot
+                        async def send(self, content):
+                            await self.channel.send(content)
+
+                    ctx = Ctx(message, self.bot)
+
+                    if callback:
+                        # Handle arguments if needed by specific commands
+                        if command == "!game":
+                            parts = message.content.strip().split(" ", 1)
+                            if len(parts) > 1:
+                                game_name = parts[1]
+                                await callback(ctx, self.bot, game_name)
+                            else:
+                                await ctx.send("Please specify a game name.")
+                        elif command == "!addcommand":
+                            # Example argument handling for addcommand:
+                            # !addcommand <command> <response> <aliases...>
+                            parts = message.content.strip().split(" ", 3)
+                            if len(parts) < 3:
+                                await ctx.send("Usage: !addcommand <command> <response> [aliases]")
+                            else:
+                                # parts[1]: command
+                                # parts[2]: response
+                                # parts[3]: aliases (optional)
+                                cmd_name = parts[1]
+                                cmd_response = parts[2]
+                                aliases = parts[3].split() if len(parts) > 3 else []
+                                await callback(ctx, self.bot, cmd_name, cmd_response, aliases)
+                        else:
+                            # No extra args needed
+                            await callback(ctx, self.bot)
+                    else:
+                        # No callback, just send the response if available
+                        if details.get("response"):
+                            await ctx.send(details["response"])
                 else:
                     await message.channel.send("You do not have permission to use this command.")
-                return
+                return  # Stop after handling the first matching command
 
-    async def fetch_game_id(self, game_name: str, oauth_token: str, client_id: str):
-        """Fetch the Twitch game ID for a given game name."""
-        url = f"https://api.twitch.tv/helix/games?name={game_name}"
-        headers = {
-            "Authorization": f"Bearer {oauth_token}",
-            "Client-Id": client_id
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                if response.status != 200:
-                    print(f"Error fetching game ID: {response.status}")
-                    return None
-                data = await response.json()
-                if "data" in data and len(data["data"]) > 0:
-                    return data["data"][0]["id"]
-                return None
-
-    async def update_category(self, broadcaster_id: str, game_id: str, oauth_token: str, client_id: str):
-        """Update the Twitch channel's category."""
-        url = "https://api.twitch.tv/helix/channels"
-        headers = {
-            "Authorization": f"Bearer {oauth_token}",
-            "Client-Id": client_id,
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "broadcaster_id": broadcaster_id,
-            "game_id": game_id
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.patch(url, headers=headers, json=payload) as response:
-                if response.status == 204:
-                    return True
-                else:
-                    print(f"Failed to update category: {response.status} - {await response.text()}")
-                    return False
-
-# Helper function to determine a user's level
-def get_user_level(user):
-    if user.is_broadcaster:
-        return USER_LEVELS["broadcaster"]
-    elif user.is_mod:
-        return USER_LEVELS["moderator"]
-    else:
-        return USER_LEVELS["viewer"]
-
-# Add the cog to the bot
 def setup(bot):
-    # Remove existing Cog if it's already loaded
     if "CommandsPlugin" in bot.cogs:
         bot.remove_cog("CommandsPlugin")
     bot.add_cog(CommandsPlugin(bot))

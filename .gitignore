@@ -1,5 +1,12 @@
-
+# Ignore the OAuth credentials file
 oauth.json
-plugins/__pycache__/
-plugins/Sample/__pycache__/
+
+# Ignore Python cache directories and files
+**/__pycache__/
+**/*.pyc
+
+# Ignore the virtual environment folder
 venv/
+
+# Ignore all files in a specific folder (replace with your folder name if needed)
+your-folder-name/**

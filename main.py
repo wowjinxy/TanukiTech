@@ -171,7 +171,7 @@ class TanukiTechBot(commands.Bot):
         if message.echo:
             return
 
-        await self.handle_commands(message)
+        #await self.handle_commands(message)
 
     @commands.command(name="hello")
     async def hello_command(self, ctx):
