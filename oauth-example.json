@@ -1,6 +1,5 @@
 {
-    "oauth_token": "your_oauth_token_here",
-    "channels": [
-        "your_channel_name"
-    ]
+    "oauth_token": "your_access_token_here",
+    "channels": ["your_channel_name"], 
+    "client_id": "your_client_id_here"
 }
