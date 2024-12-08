@@ -1,6 +1,6 @@
 # Tanuki Tech Bot
 
-Tanuki Tech Bot is a modular and customizable Twitch bot designed to streamline channel management and enhance viewer engagement. Leveraging a flexible plugin architecture, you can dynamically load and reload features on-the-fly, create custom commands, and interact with the Twitch API—all without restarting the bot.
+Tanuki Tech Bot is a modular and customizable Twitch bot designed to enhance chat interaction and stream management. Built with a plugin-based architecture, it allows users to dynamically load and manage features, create custom commands, and interact with the Twitch API for advanced functionality. Ideal for streamers seeking a powerful yet user-friendly bot, Tanuki Tech Bot offers permission-based command handling, alias support, and the ability to extend its capabilities with minimal effort. Whether you're managing your community or adding fun chat interactions, Tanuki Tech Bot is your go-to solution for Twitch automation.
 
 ---
 
