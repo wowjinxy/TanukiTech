@@ -4,7 +4,7 @@ from twitchio.ext import commands
 
 metadata = {
     "name": "Commands Plugin",
-    "version": "1.5",
+    "version": "2.0",
     "author": "Jinxy",
     "description": "A plugin to handle custom chat commands with user-level filtering."
 }
@@ -13,7 +13,7 @@ metadata = {
 CUSTOM_COMMANDS = {
     "!greet": {"response": "Hello there! How can I assist you today?", "level": 0},
     "!info": {"response": "I am TanukiTechBot, here to help manage your chat and entertain your audience!", "level": 0},
-    "!help": {"response": "Available commands: !greet, !info, !help, !commands", "level": 0},
+    "!help": {"response": "Available commands: !greet, !info, !help", "level": 0},
 }
 
 # User levels
@@ -35,13 +35,32 @@ class CommandsPlugin(commands.Cog):
             command for command, details in CUSTOM_COMMANDS.items()
             if details["level"] <= user_level
         ]
-        response = "Available commands: " + ", ".join(available_commands)
-        await ctx.send(response)
+        # Add "!commands" explicitly to the list
+        available_commands.append("!commands")
+        await ctx.send(", ".join(available_commands))
+
+    @commands.command(name="addcommand")
+    async def add_command(self, ctx, command: str, *, response: str):
+        """Add a new custom command dynamically."""
+        if get_user_level(ctx.author) < USER_LEVELS["moderator"]:
+            await ctx.send("You do not have permission to add commands.")
+            return
+
+        if command in CUSTOM_COMMANDS:
+            await ctx.send(f"The command '{command}' already exists.")
+            return
+
+        CUSTOM_COMMANDS[command] = {"response": response, "level": 0}
+        await ctx.send(f"Command '{command}' has been added successfully.")
 
     @commands.Cog.event()
     async def event_message(self, message):
         """Listen for custom commands."""
         if message.echo:
+            return
+
+        # Prevent duplicate responses for !commands
+        if message.content == "!commands":
             return
 
         if message.content in CUSTOM_COMMANDS:
@@ -67,4 +86,3 @@ def setup(bot):
     if "CommandsPlugin" in bot.cogs:
         bot.remove_cog("CommandsPlugin")
     bot.add_cog(CommandsPlugin(bot))
-
