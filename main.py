@@ -50,36 +50,35 @@ class TanukiTechBot(commands.Bot):
             input("Press Enter to try again...")
 
     def load_plugins(self):
-        """Load plugins from the plugins folder."""
+        """
+        Load plugins from the plugins folder.
+        """
         plugins = []
         PLUGINS_FOLDER = "plugins"
-        REQUIRED_METADATA_KEYS = ["name", "version", "author", "description"]
-
+    
         if not os.path.exists(PLUGINS_FOLDER):
             os.makedirs(PLUGINS_FOLDER)
-
+    
         for root, _, files in os.walk(PLUGINS_FOLDER):
             for filename in files:
                 if filename.endswith(".py"):
                     plugin_path = os.path.join(root, filename)
                     spec = importlib.util.spec_from_file_location(filename[:-3], plugin_path)
                     module = importlib.util.module_from_spec(spec)
-
+    
                     try:
                         spec.loader.exec_module(module)
-
-                        if hasattr(module, "metadata"):
-                            metadata = module.metadata
-                            if all(key in metadata for key in REQUIRED_METADATA_KEYS):
-                                plugins.append({"module": module, "metadata": metadata})
-                                print(f"Loaded plugin: {metadata['name']} (v{metadata['version']}) by {metadata['author']}")
-                            else:
-                                print(f"Plugin '{filename}' metadata incomplete.")
+    
+                        if hasattr(module, "setup"):
+                            # Call setup to register the plugin's Cog
+                            module.setup(self)
+                            plugins.append(module)  # Store the plugin module
+                            print(f"Loaded plugin: {getattr(module, 'metadata', {}).get('name', filename)}")
                         else:
-                            print(f"Plugin '{filename}' lacks a 'metadata' dictionary.")
+                            print(f"Plugin '{filename}' does not have a setup function.")
                     except Exception as e:
                         print(f"Failed to load plugin '{filename}': {e}")
-
+    
         return plugins
 
     async def event_ready(self):
@@ -87,7 +86,7 @@ class TanukiTechBot(commands.Bot):
         print(f"Logged in as {self.nick}")
         print(f"Connected to channel(s): {', '.join(self.channels)}")
         print("============================================")
-
+    
         # Load plugins
         self.plugins = self.load_plugins()
         print(f"Loaded {len(self.plugins)} plugins.")
@@ -118,11 +117,12 @@ class TanukiTechBot(commands.Bot):
     async def event_message(self, message):
         if message.echo:
             return
-
+    
+        # Iterate through plugin modules
         for plugin in self.plugins:
-            if hasattr(plugin["module"], "on_message"):
-                await plugin["module"].on_message(self, message)
-
+            if hasattr(plugin, "on_message"):
+                await plugin.on_message(self, message)
+    
         await self.handle_commands(message)
 
     @commands.command(name="hello")
