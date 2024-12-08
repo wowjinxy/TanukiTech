@@ -188,13 +188,11 @@ class TanukiTechBot(commands.Bot):
 
 
 if __name__ == "__main__":
-    # Load OAuth data first
-    oauth_data = load_oauth()
+    oauth_data = load_oauth()  # This returns at least oauth_token, client_id, and channels
 
-    # Attempt to fetch broadcaster_id before creating the bot
+    # Fetch broadcaster_id automatically
     broadcaster_name = oauth_data["channels"][0] if oauth_data["channels"] else None
     if broadcaster_name:
-        # Instead of calling asyncio.run() here, we'll create a temporary loop:
         temp_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(temp_loop)
         broadcaster_id = temp_loop.run_until_complete(fetch_broadcaster_id(
@@ -202,7 +200,6 @@ if __name__ == "__main__":
         ))
         temp_loop.close()
 
-        # After we are done fetching, we can create a fresh event loop for the bot.
         asyncio.set_event_loop(asyncio.new_event_loop())
 
         if broadcaster_id:
@@ -212,7 +209,5 @@ if __name__ == "__main__":
     else:
         print("No channels found in oauth.json, unable to fetch broadcaster_id.")
 
-    # Now instantiate the bot after ensuring a default event loop exists.
-    asyncio.set_event_loop(asyncio.new_event_loop())  # Create and set a clean loop for the bot
     bot = TanukiTechBot(oauth_data)
     bot.run()
